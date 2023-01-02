@@ -29,6 +29,7 @@ CPMAddPackage(
 
 CPMAddPackage("gh:fmtlib/fmt#9.1.0")
 CPMAddPackage("gh:ericniebler/range-v3#0.12.0")
+CPMAddPackage("gh:nlohmann/json#v3.11.2")
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 20)
@@ -43,4 +44,5 @@ target_link_libraries(
   sdk::tier3
   fmt::fmt-header-only
   range-v3::range-v3
+  nlohmann_json::nlohmann_json
 )

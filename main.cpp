@@ -4,6 +4,9 @@
 #include <eiface.h>
 #include <fmt/core.h>
 #include <interface.h>
+#include <iostream>
+#include <nlohmann/json.hpp>
+#include <ostream>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/for_each.hpp>
 #include <range/v3/view/join.hpp>
@@ -16,13 +19,17 @@
 #include "generator.hpp"
 
 struct ServerProp {
+  std::string name;
+  // offset is unused rn
   std::ptrdiff_t offset{};
   SendPropType type{};
   int flags{};
 };
 
-auto get_flags_as_str(int flags) {
+auto get_flags_as_str(const ServerProp &prop) {
   std::vector<std::string> s_flags{};
+
+  auto flags = prop.flags;
   if (flags & SPROP_UNSIGNED)
     s_flags.emplace_back("UNSIGNED");
   if (flags & SPROP_COORD)
@@ -61,42 +68,38 @@ auto get_flags_as_str(int flags) {
   return s_flags;
 }
 
-template <> struct fmt::formatter<SendPropType> : formatter<std::string_view> {
-  // parse is inherited from formatter<string_view>.
-  template <typename FormatContext>
-  auto format(SendPropType c, FormatContext &ctx) const {
-    std::string_view name = "unknown";
-    switch (c) {
-    case DPT_Int:
-      name = "int";
-      break;
-    case DPT_Float:
-      name = "float";
-      break;
-    case DPT_Vector:
-      name = "vector";
-      break;
-    case DPT_VectorXY:
-      name = "vectorxy";
-      break;
-    case DPT_String:
-      name = "string";
-      break;
-    case DPT_Array:
-      name = "array";
-      break;
-    case DPT_DataTable:
-      name = "datatable";
-      break;
-    case DPT_NUMSendPropTypes:
-      name = "numsendproptypes";
-      break;
-    }
-    return formatter<std::string_view>::format(name, ctx);
+auto prop_type_to_str(SendPropType t) {
+  switch (t) {
+  case DPT_Int:
+    return "int";
+  case DPT_Float:
+    return "float";
+  case DPT_Vector:
+    return "vector";
+  case DPT_VectorXY:
+    return "vectorxy";
+  case DPT_String:
+    return "string";
+  case DPT_Array:
+    return "array";
+  case DPT_DataTable:
+    return "datatable";
+  case DPT_NUMSendPropTypes:
+    return "numsendproptypes";
+  default:
+    return "unknown";
   }
-};
+}
 
-Generator<std::pair<std::string, ServerProp>> parse_tbl(SendTable *tbl) {
+void to_json(nlohmann::json &j, const ServerProp &prop) {
+  j = nlohmann::json{{"name", prop.name},
+                     {"type", std::string(prop_type_to_str(prop.type))},
+                     {"flags", get_flags_as_str(prop)}};
+}
+
+std::vector<ServerProp> parse_tbl(SendTable *tbl) {
+  std::vector<ServerProp> props;
+
   for (auto idx = 0; idx < tbl->GetNumProps(); idx++) {
     auto prop = tbl->GetProp(idx);
 
@@ -105,20 +108,20 @@ Generator<std::pair<std::string, ServerProp>> parse_tbl(SendTable *tbl) {
       auto subtable = prop->GetDataTable();
       auto parsed_subtable = parse_tbl(subtable);
 
-      for (const auto &[name, subprop] : parsed_subtable) {
+      for (const auto &subprop : parsed_subtable) {
         const auto subprop_name =
-            fmt::format("{}::{}", subtable->GetName(), name);
+            fmt::format("{}::{}", subtable->GetName(), subprop.name);
 
-        co_yield std::pair(subprop_name,
-                           ServerProp(prop->GetOffset() + subprop.offset,
-                                      subprop.type, subprop.flags));
+        props.emplace_back(subprop_name, prop->GetOffset() + subprop.offset,
+                           subprop.type, subprop.flags);
       };
     } else {
-      co_yield std::pair(
-          std::string(prop->GetName()),
-          ServerProp(prop->GetOffset(), prop_type, prop->GetFlags()));
+      props.emplace_back(std::string(prop->GetName()), prop->GetOffset(),
+                         prop_type, prop->GetFlags());
     }
   }
+
+  return props;
 }
 
 int main(int argc, char **argv) {
@@ -142,19 +145,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  nlohmann::ordered_json server_classes{};
   for (auto server_class = dll->GetAllServerClasses(); server_class != nullptr;
        server_class = server_class->m_pNext) {
     auto class_name = server_class->GetName();
-    fmt::print("{}\n", class_name);
-
-    for (auto &[prop_name, prop] : parse_tbl(server_class->m_pTable)) {
-      auto flags_l = get_flags_as_str(prop.flags);
-      std::string flags =
-          flags_l | ranges::views::join('|') | ranges::to<std::string>();
-      fmt::print("\t {} @ {:08X} {} ({})\n", prop_name, prop.offset, prop.type,
-                 flags);
-    };
+    server_classes[class_name] =
+        nlohmann::json(parse_tbl(server_class->m_pTable));
   }
+
+  std::cout << server_classes << std::endl;
 
   dlclose(handle);
 

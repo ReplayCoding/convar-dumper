@@ -20,13 +20,13 @@ struct Generator : public ranges::view_facade<Generator<T>> {
     void unhandled_exception() { result = std::current_exception(); };
 
     template <std::convertible_to<T> From>
-    std::suspend_always yield_value(const From& value) {
+    std::suspend_always yield_value(const From &value) {
       result = std::addressof(value);
       return {};
     }
 
     template <std::convertible_to<T> From>
-    std::suspend_always yield_value(From&& value) {
+    std::suspend_always yield_value(From &&value) {
       result = std::addressof(value);
       return {};
     }
@@ -39,21 +39,18 @@ struct Generator : public ranges::view_facade<Generator<T>> {
     }
 
     bool has_value() { return !std::holds_alternative<std::monostate>(result); }
-    T& get_value() {
-      return std::holds_alternative<T>(result) ? std::get<T>(result)
-                                               : *std::get<T*>(result);
-    }
+    T &get_value() { return *std::get<T *>(result); }
 
-   private:
-    std::variant<std::monostate, T, T*, std::exception_ptr> result;
+  private:
+    std::variant<std::monostate, T *, std::exception_ptr> result;
   };
 
   struct Cursor {
     Cursor() noexcept = default;
-    explicit Cursor(const std::coroutine_handle<promise_type>& coro) noexcept
+    explicit Cursor(const std::coroutine_handle<promise_type> &coro) noexcept
         : coro{&coro} {}
 
-    bool equal(const Cursor& other) const { return this->coro == other.coro; };
+    bool equal(const Cursor &other) const { return this->coro == other.coro; };
 
     void next() {
       assert(coro != nullptr);
@@ -66,20 +63,20 @@ struct Generator : public ranges::view_facade<Generator<T>> {
       }
     }
 
-    T& read() const noexcept {
+    T &read() const noexcept {
       assert(coro != nullptr);
       assert(!coro->done());
       return coro->promise().get_value();
     }
 
-   private:
-    const std::coroutine_handle<promise_type>* coro;
+  private:
+    const std::coroutine_handle<promise_type> *coro;
   };
 
-  Generator(Generator&& other) noexcept
+  Generator(Generator &&other) noexcept
       : coro{std::exchange(other.coro, nullptr)} {}
 
-  Generator& operator=(Generator&& other) noexcept {
+  Generator &operator=(Generator &&other) noexcept {
     if (coro)
       coro.destroy();
     coro = std::exchange(other.coro, nullptr);
@@ -102,8 +99,8 @@ struct Generator : public ranges::view_facade<Generator<T>> {
   };
   Cursor end_cursor() const noexcept { return Cursor{}; };
 
- private:
-  explicit Generator(promise_type& promise) noexcept
+private:
+  explicit Generator(promise_type &promise) noexcept
       : coro{std::coroutine_handle<promise_type>::from_promise(promise)} {};
 
   std::coroutine_handle<promise_type> coro;
