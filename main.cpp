@@ -59,9 +59,20 @@ auto get_flags_as_str(const ServerProp &prop) {
 
   // Shared with VARINT, because valve are WIMPS who don't want to break demo
   // compatibility.
-  // TODO:: FIX THIS
-  if (flags & SPROP_NORMAL || flags & SPROP_VARINT)
-    s_flags.emplace_back("NORMAL/VARINT");
+  if (flags & SPROP_NORMAL || flags & SPROP_VARINT) {
+    switch (prop.type) {
+    case DPT_Int:
+      s_flags.emplace_back("VARINT");
+      break;
+    case DPT_Float:
+    case DPT_Vector:
+      s_flags.emplace_back("NORMAL");
+      break;
+    default:
+      s_flags.emplace_back("UNKNOWN");
+      break;
+    }
+  }
 
   return s_flags;
 }
