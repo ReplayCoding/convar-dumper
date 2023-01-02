@@ -16,8 +16,6 @@
 #include <string_view>
 #include <utility>
 
-#include "generator.hpp"
-
 struct ServerProp {
   std::string name;
   // offset is unused rn
