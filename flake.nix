@@ -18,6 +18,7 @@
       in {
         default = pkgs.stdenv.mkDerivation {
           name = "devshell";
+          SYSTEMD_DEBUGGER = "lldb";
           nativeBuildInputs = with pkgs; [
             # For build
             cmake

@@ -1,8 +1,12 @@
 #include <dlfcn.h>
+#include <dt_common.h>
 #include <dt_send.h>
 #include <eiface.h>
 #include <fmt/core.h>
 #include <interface.h>
+#include <range/v3/range/conversion.hpp>
+#include <range/v3/view/for_each.hpp>
+#include <range/v3/view/join.hpp>
 #include <server_class.h>
 #include <stdio.h>
 #include <string>
@@ -12,13 +16,51 @@
 #include "generator.hpp"
 
 struct ServerProp {
-  ServerProp() = default;
-  ServerProp(std::ptrdiff_t offset, SendPropType type)
-      : offset(offset), type(type){};
-
   std::ptrdiff_t offset{};
   SendPropType type{};
+  int flags{};
 };
+
+auto get_flags_as_str(int flags) {
+  std::vector<std::string> s_flags{};
+  if (flags & SPROP_UNSIGNED)
+    s_flags.emplace_back("UNSIGNED");
+  if (flags & SPROP_COORD)
+    s_flags.emplace_back("COORD");
+  if (flags & SPROP_NOSCALE)
+    s_flags.emplace_back("NOSCALE");
+  if (flags & SPROP_ROUNDDOWN)
+    s_flags.emplace_back("ROUNDDOWN");
+  if (flags & SPROP_ROUNDUP)
+    s_flags.emplace_back("ROUNDUP");
+  if (flags & SPROP_EXCLUDE)
+    s_flags.emplace_back("EXCLUDE");
+  if (flags & SPROP_INSIDEARRAY)
+    s_flags.emplace_back("INSIDEARRAY");
+  if (flags & SPROP_PROXY_ALWAYS_YES)
+    s_flags.emplace_back("PROXY_ALWAYS_YES");
+  if (flags & SPROP_CHANGES_OFTEN)
+    s_flags.emplace_back("CHANGES_OFTEN");
+  if (flags & SPROP_IS_A_VECTOR_ELEM)
+    s_flags.emplace_back("IS_A_VECTOR_ELEM");
+  if (flags & SPROP_COLLAPSIBLE)
+    s_flags.emplace_back("COLLAPSIBLE");
+  if (flags & SPROP_COORD_MP)
+    s_flags.emplace_back("COORD_MP");
+  if (flags & SPROP_COORD_MP_LOWPRECISION)
+    s_flags.emplace_back("COORD_MP_LOWPRECISION");
+  if (flags & SPROP_COORD_MP_INTEGRAL)
+    s_flags.emplace_back("COORD_MP_INTEGRAL");
+
+  // Shared with VARINT, because valve are WIMPS who don't want to break demo
+  // compatibility.
+  // TODO:: FIX THIS
+  if (flags & SPROP_NORMAL || flags & SPROP_VARINT)
+    s_flags.emplace_back("NORMAL/VARINT");
+
+  return s_flags;
+}
+
 template <> struct fmt::formatter<SendPropType> : formatter<std::string_view> {
   // parse is inherited from formatter<string_view>.
   template <typename FormatContext>
@@ -67,13 +109,14 @@ Generator<std::pair<std::string, ServerProp>> parse_tbl(SendTable *tbl) {
         const auto subprop_name =
             fmt::format("{}::{}", subtable->GetName(), name);
 
-        co_yield std::pair(
-            subprop_name,
-            ServerProp(prop->GetOffset() + subprop.offset, subprop.type));
+        co_yield std::pair(subprop_name,
+                           ServerProp(prop->GetOffset() + subprop.offset,
+                                      subprop.type, subprop.flags));
       };
     } else {
-      co_yield std::pair(std::string(prop->GetName()),
-                         ServerProp(prop->GetOffset(), prop_type));
+      co_yield std::pair(
+          std::string(prop->GetName()),
+          ServerProp(prop->GetOffset(), prop_type, prop->GetFlags()));
     }
   }
 }
@@ -105,7 +148,11 @@ int main(int argc, char **argv) {
     fmt::print("{}\n", class_name);
 
     for (auto &[prop_name, prop] : parse_tbl(server_class->m_pTable)) {
-      fmt::print("\t {} @ {:08X} ({})\n", prop_name, prop.offset, prop.type);
+      auto flags_l = get_flags_as_str(prop.flags);
+      std::string flags =
+          flags_l | ranges::views::join('|') | ranges::to<std::string>();
+      fmt::print("\t {} @ {:08X} {} ({})\n", prop_name, prop.offset, prop.type,
+                 flags);
     };
   }
 
