@@ -57,7 +57,7 @@ auto get_flags_as_str(const ServerProp &prop) {
   if (flags & SPROP_COORD_MP_INTEGRAL)
     s_flags.emplace_back("COORD_MP_INTEGRAL");
 
-  // Shared with VARINT, because valve are WIMPS who don't want to break demo
+  // Shared with VARINT, because valve didn't want to break demo
   // compatibility.
   if (flags & SPROP_NORMAL || flags & SPROP_VARINT) {
     switch (prop.type) {
@@ -103,7 +103,8 @@ auto prop_type_to_str(SendPropType t) {
 void to_json(nlohmann::json &j, const ServerProp &prop) {
   j = nlohmann::json{{"name", prop.name},
                      {"type", std::string(prop_type_to_str(prop.type))},
-                     {"flags", get_flags_as_str(prop)}};
+                     {"flags", get_flags_as_str(prop)},
+                     {"offset", prop.offset}};
 }
 
 std::vector<ServerProp> parse_tbl(SendTable *tbl) {
