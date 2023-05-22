@@ -77,7 +77,7 @@ auto get_flags_as_str(const ServerProp &prop) {
   return s_flags;
 }
 
-auto prop_type_to_str(SendPropType t) {
+std::string_view prop_type_to_str(SendPropType t) {
   switch (t) {
   case DPT_Int:
     return "int";
@@ -135,7 +135,7 @@ std::vector<ServerProp> parse_tbl(SendTable *tbl) {
 }
 
 int main(int argc, char **argv) {
-  auto handle = dlopen("server.so", RTLD_NOW);
+  auto handle = dlopen("server_srv.so", RTLD_NOW);
   if (handle == nullptr) {
     fmt::print("Handle is nullptr {}\n", dlerror());
     return 1;
@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
   auto create_interface = (CreateInterfaceFn)dlsym(handle, "CreateInterface");
   if (create_interface == nullptr) {
     fmt::print("CreateInterface is nullptr\n");
-    return 1;
+    return 2;
   }
 
   int retcode{};
@@ -152,18 +152,20 @@ int main(int argc, char **argv) {
                                                  &retcode);
   if (dll == nullptr) {
     fmt::print("dll is nullptr\n");
-    return 1;
+    return 3;
   }
 
-  nlohmann::ordered_json server_classes{};
   for (auto server_class = dll->GetAllServerClasses(); server_class != nullptr;
        server_class = server_class->m_pNext) {
     auto class_name = server_class->GetName();
-    server_classes[class_name] =
-        nlohmann::json(parse_tbl(server_class->m_pTable));
-  }
+    auto parsed = parse_tbl(server_class->m_pTable);
 
-  std::cout << server_classes << std::endl;
+    fmt::print("{}:\n", class_name);
+    for (auto& prop: parsed) {
+      fmt::print("\t{} ({})\n", prop.name, prop_type_to_str(prop.type));
+      // fmt::print("\t\toffset: {:08x}\n", prop.offset);
+    }
+  }
 
   dlclose(handle);
 
