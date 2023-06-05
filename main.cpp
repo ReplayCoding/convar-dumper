@@ -7,9 +7,6 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <ostream>
-#include <range/v3/range/conversion.hpp>
-#include <range/v3/view/for_each.hpp>
-#include <range/v3/view/join.hpp>
 #include <server_class.h>
 #include <stdio.h>
 #include <string>
@@ -136,6 +133,9 @@ std::vector<ServerProp> parse_tbl(SendTable *tbl) {
 
 int main(int argc, char **argv) {
   auto handle = dlopen("server_srv.so", RTLD_NOW);
+  if (handle == nullptr)
+    handle = dlopen("server.so", RTLD_NOW);
+
   if (handle == nullptr) {
     fmt::print("Handle is nullptr {}\n", dlerror());
     return 1;

@@ -4,6 +4,8 @@ project("nvdumper")
 
 set(CPM_DOWNLOAD_VERSION 0.34.0)
 
+add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
+
 if(CPM_SOURCE_CACHE)
   set(CPM_DOWNLOAD_LOCATION "${CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
 elseif(DEFINED ENV{CPM_SOURCE_CACHE})
@@ -28,7 +30,6 @@ CPMAddPackage(
 )
 
 CPMAddPackage("gh:fmtlib/fmt#9.1.0")
-CPMAddPackage("gh:ericniebler/range-v3#0.12.0")
 CPMAddPackage("gh:nlohmann/json#v3.11.2")
 
 set(CMAKE_C_STANDARD 99)
@@ -42,7 +43,6 @@ target_link_libraries(
   sdk::tier1
   sdk::tier2
   sdk::tier3
-  fmt::fmt-header-only
-  range-v3::range-v3
+  fmt::fmt
   nlohmann_json::nlohmann_json
 )
