@@ -1,171 +1,191 @@
+#include <LIEF/ELF.hpp>
+#include <convar.h>
+#include <cstdint>
 #include <dlfcn.h>
-#include <dt_common.h>
-#include <dt_send.h>
-#include <eiface.h>
 #include <fmt/core.h>
+#include <fmt/posix.h>
 #include <interface.h>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <ostream>
-#include <server_class.h>
 #include <stdio.h>
 #include <string>
 #include <string_view>
+#include <tier1/tier1.h>
 #include <utility>
 
-struct ServerProp {
-  std::string name;
-  // offset is unused rn
-  std::ptrdiff_t offset{};
-  SendPropType type{};
-  int flags{};
+#include <link.h>
+
+CreateInterfaceFn createinterface_vs = nullptr;
+
+void *createinterface_wrapper(char *pName, int *pReturnCode) {
+  void *iface = CreateInterface(pName, pReturnCode);
+  if (!iface)
+    iface = createinterface_vs(pName, pReturnCode);
+  // fmt::print("{} {}\n", pName, fmt::ptr(iface));
+  return iface;
+}
+
+struct ConVarFlags_t {
+  int bit;
+  const char *desc;
+  const char *shortdesc;
 };
 
-auto get_flags_as_str(const ServerProp &prop) {
-  std::vector<std::string> s_flags{};
+#define CONVARFLAG(x, y)                                                       \
+  { FCVAR_##x, #x, #y }
+static ConVarFlags_t g_ConVarFlags[] = {
+    //	CONVARFLAG( UNREGISTERED, "u" ),
+    CONVARFLAG(ARCHIVE, "a"),
+    CONVARFLAG(SPONLY, "sp"),
+    CONVARFLAG(GAMEDLL, "sv"),
+    CONVARFLAG(CHEAT, "cheat"),
+    CONVARFLAG(USERINFO, "user"),
+    CONVARFLAG(NOTIFY, "nf"),
+    CONVARFLAG(PROTECTED, "prot"),
+    CONVARFLAG(PRINTABLEONLY, "print"),
+    CONVARFLAG(UNLOGGED, "log"),
+    CONVARFLAG(NEVER_AS_STRING, "numeric"),
+    CONVARFLAG(REPLICATED, "rep"),
+    CONVARFLAG(DEMO, "demo"),
+    CONVARFLAG(DONTRECORD, "norecord"),
+    CONVARFLAG(SERVER_CAN_EXECUTE, "server_can_execute"),
+    CONVARFLAG(CLIENTCMD_CAN_EXECUTE, "clientcmd_can_execute"),
+    CONVARFLAG(CLIENTDLL, "cl"),
+};
 
-  auto flags = prop.flags;
-  if (flags & SPROP_UNSIGNED)
-    s_flags.emplace_back("UNSIGNED");
-  if (flags & SPROP_COORD)
-    s_flags.emplace_back("COORD");
-  if (flags & SPROP_NOSCALE)
-    s_flags.emplace_back("NOSCALE");
-  if (flags & SPROP_ROUNDDOWN)
-    s_flags.emplace_back("ROUNDDOWN");
-  if (flags & SPROP_ROUNDUP)
-    s_flags.emplace_back("ROUNDUP");
-  if (flags & SPROP_EXCLUDE)
-    s_flags.emplace_back("EXCLUDE");
-  if (flags & SPROP_INSIDEARRAY)
-    s_flags.emplace_back("INSIDEARRAY");
-  if (flags & SPROP_PROXY_ALWAYS_YES)
-    s_flags.emplace_back("PROXY_ALWAYS_YES");
-  if (flags & SPROP_CHANGES_OFTEN)
-    s_flags.emplace_back("CHANGES_OFTEN");
-  if (flags & SPROP_IS_A_VECTOR_ELEM)
-    s_flags.emplace_back("IS_A_VECTOR_ELEM");
-  if (flags & SPROP_COLLAPSIBLE)
-    s_flags.emplace_back("COLLAPSIBLE");
-  if (flags & SPROP_COORD_MP)
-    s_flags.emplace_back("COORD_MP");
-  if (flags & SPROP_COORD_MP_LOWPRECISION)
-    s_flags.emplace_back("COORD_MP_LOWPRECISION");
-  if (flags & SPROP_COORD_MP_INTEGRAL)
-    s_flags.emplace_back("COORD_MP_INTEGRAL");
-
-  // Shared with VARINT, because valve didn't want to break demo
-  // compatibility.
-  if (flags & SPROP_NORMAL || flags & SPROP_VARINT) {
-    switch (prop.type) {
-    case DPT_Int:
-      s_flags.emplace_back("VARINT");
-      break;
-    case DPT_Float:
-    case DPT_Vector:
-      s_flags.emplace_back("NORMAL");
-      break;
-    default:
-      s_flags.emplace_back("UNKNOWN");
-      break;
+class CustomConCommandAccessor : public IConCommandBaseAccessor {
+public:
+  virtual bool RegisterConCommandBase(ConCommandBase *pVar) override {
+    std::string flags;
+    for (ConVarFlags_t &flag_to_check : g_ConVarFlags) {
+      if (pVar->IsFlagSet(flag_to_check.bit))
+        // no comma at start, total waste :)
+        if (flags.empty())
+          flags += fmt::format("{}", flag_to_check.shortdesc);
+        else
+          flags += fmt::format(",{}", flag_to_check.shortdesc);
     }
+
+    auto name = pVar->GetName();
+    auto help_text = pVar->GetHelpText();
+
+    if (ConVar *cVar = dynamic_cast<ConVar *>(pVar)) {
+      fmt::print("cvar '{}' flags: [{}] default: '{}' {}\n", name, flags,
+                 cVar->GetDefault(), help_text);
+    } else
+      fmt::print("ccommand '{}' flags: [{}] {}\n", name, flags, help_text);
+    return true;
   }
+};
 
-  return s_flags;
-}
-
-std::string_view prop_type_to_str(SendPropType t) {
-  switch (t) {
-  case DPT_Int:
-    return "int";
-  case DPT_Float:
-    return "float";
-  case DPT_Vector:
-    return "vector";
-  case DPT_VectorXY:
-    return "vectorxy";
-  case DPT_String:
-    return "string";
-  case DPT_Array:
-    return "array";
-  case DPT_DataTable:
-    return "datatable";
-  case DPT_NUMSendPropTypes:
-    return "numsendproptypes";
-  default:
-    return "unknown";
-  }
-}
-
-void to_json(nlohmann::json &j, const ServerProp &prop) {
-  j = nlohmann::json{{"name", prop.name},
-                     {"type", std::string(prop_type_to_str(prop.type))},
-                     {"flags", get_flags_as_str(prop)},
-                     {"offset", prop.offset}};
-}
-
-std::vector<ServerProp> parse_tbl(SendTable *tbl) {
-  std::vector<ServerProp> props;
-
-  for (auto idx = 0; idx < tbl->GetNumProps(); idx++) {
-    auto prop = tbl->GetProp(idx);
-
-    auto prop_type = prop->GetType();
-    if (prop_type == SendPropType::DPT_DataTable) {
-      auto subtable = prop->GetDataTable();
-      auto parsed_subtable = parse_tbl(subtable);
-
-      for (const auto &subprop : parsed_subtable) {
-        const auto subprop_name =
-            fmt::format("{}::{}", subtable->GetName(), subprop.name);
-
-        props.emplace_back(subprop_name, prop->GetOffset() + subprop.offset,
-                           subprop.type, subprop.flags);
-      };
-    } else {
-      props.emplace_back(std::string(prop->GetName()), prop->GetOffset(),
-                         prop_type, prop->GetFlags());
-    }
-  }
-
-  return props;
-}
+const char *file_to_do_magic_on = nullptr;
 
 int main(int argc, char **argv) {
-  auto handle = dlopen("server_srv.so", RTLD_NOW);
-  if (handle == nullptr)
-    handle = dlopen("server.so", RTLD_NOW);
+  if (argc > 1)
+    file_to_do_magic_on = argv[1];
+  else
+    return;
+
+  auto handle_vs = dlopen("libvstdlib_srv.so", RTLD_NOW);
+  auto ci = dlsym(handle_vs, "CreateInterface");
+  if (handle_vs == nullptr) {
+    fmt::print("???\n");
+    return 1;
+  }
+  createinterface_vs = ci;
+
+  auto handle = dlopen(file_to_do_magic_on, RTLD_NOW);
+  // if (handle == nullptr)
+  //   handle = dlopen("server.so", RTLD_NOW);
 
   if (handle == nullptr) {
     fmt::print("Handle is nullptr {}\n", dlerror());
     return 1;
   }
 
-  auto create_interface = (CreateInterfaceFn)dlsym(handle, "CreateInterface");
-  if (create_interface == nullptr) {
-    fmt::print("CreateInterface is nullptr\n");
-    return 2;
-  }
+  std::pair<std::string, uintptr_t> module_info;
+  dl_iterate_phdr(
+      [](dl_phdr_info *info, size_t info_size, void *user_data) {
+        auto *module_info =
+            std::bit_cast<std::pair<std::string, uintptr_t> *>(user_data);
+        const std::string_view fname = basename(info->dlpi_name);
 
-  int retcode{};
-  auto *dll = (IServerGameDLL *)create_interface(INTERFACEVERSION_SERVERGAMEDLL,
-                                                 &retcode);
-  if (dll == nullptr) {
-    fmt::print("dll is nullptr\n");
+        constexpr std::string_view vsdo_path = "linux-vdso.so.1";
+
+        if (info->dlpi_addr == 0 || info->dlpi_name == nullptr ||
+            info->dlpi_name[0] == '\0') {
+          return 0;
+        } else if (vsdo_path == fname) {
+          return 0;
+        }
+
+        auto end_addr = info->dlpi_addr;
+        for (size_t i = 0; i < info->dlpi_phnum; i++) {
+          end_addr = info->dlpi_addr +
+                     (info->dlpi_phdr->p_vaddr + info->dlpi_phdr->p_memsz);
+        }
+
+        if (fname == file_to_do_magic_on) {
+          *module_info = {std::string(info->dlpi_name),
+                          static_cast<uintptr_t>(info->dlpi_addr)};
+          return 1;
+        }
+
+        return 0;
+      },
+      &module_info);
+
+  const std::unique_ptr<LIEF::ELF::Binary> lief_mod =
+      LIEF::ELF::Parser::parse(module_info.first);
+
+  if (lief_mod == nullptr) {
+    fmt::print("Lief failed\n");
     return 3;
   }
 
-  for (auto server_class = dll->GetAllServerClasses(); server_class != nullptr;
-       server_class = server_class->m_pNext) {
-    auto class_name = server_class->GetName();
-    auto parsed = parse_tbl(server_class->m_pTable);
-
-    fmt::print("{}:\n", class_name);
-    for (auto& prop: parsed) {
-      fmt::print("\t{} ({})\n", prop.name, prop_type_to_str(prop.type));
-      // fmt::print("\t\toffset: {:08x}\n", prop.offset);
-    }
+  const auto cvr_sym =
+      lief_mod->get_symbol("_Z15ConVar_RegisteriP23IConCommandBaseAccessor");
+  if (cvr_sym == nullptr) {
+    fmt::print("ConVar_Register sym is nullptr\n");
+    return 2;
   }
+
+  const auto connectt1_sym =
+      lief_mod->get_symbol("_Z21ConnectTier1LibrariesPPFPvPKcPiEi");
+  if (connectt1_sym == nullptr) {
+    fmt::print("ConnectTier1Libraries sym is nullptr\n");
+    return 2;
+  }
+
+  typedef void (*ConnectTier1Libraries_t)(CreateInterfaceFn * pFactoryList,
+                                          int nFactoryCount);
+  typedef void (*ConVar_Register_t)(int nCVarFlag,
+                                    IConCommandBaseAccessor *pAccessor);
+
+  auto connectt1 =
+      (ConnectTier1Libraries_t)(module_info.second + connectt1_sym->value());
+  if (module_info.second == 0 || connectt1_sym->value() == 0 ||
+      connectt1 == 0) {
+    fmt::print("ConnectTier1Libraries is nullptr\n");
+    return 2;
+  }
+
+  auto convar_register =
+      (ConVar_Register_t)(module_info.second + cvr_sym->value());
+  if (module_info.second == 0 || cvr_sym->value() == 0 ||
+      convar_register == 0) {
+    fmt::print("ConVar_Register is nullptr\n");
+    return 2;
+  }
+
+  CreateInterfaceFn factory = createinterface_wrapper;
+  connectt1(&factory, 1);
+
+  CustomConCommandAccessor accessor{};
+  convar_register(0, &accessor);
 
   dlclose(handle);
 

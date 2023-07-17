@@ -1,10 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 
-project("nvdumper")
+project("cvdumper")
 
 set(CPM_DOWNLOAD_VERSION 0.34.0)
-
-add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
 
 if(CPM_SOURCE_CACHE)
   set(CPM_DOWNLOAD_LOCATION "${CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
@@ -26,23 +24,31 @@ include(${CPM_DOWNLOAD_LOCATION})
 CPMAddPackage(
   NAME source-sdk
   GITHUB_REPOSITORY ReplayCoding/hl2sdk-cmake
-  GIT_TAG 92b751c8
+  GIT_TAG c023ae53e42cb56a338751b56f4075771346e55a
+  OPTIONS "SDK_USE_CXX11_ABI ON"
 )
 
-CPMAddPackage("gh:fmtlib/fmt#9.1.0")
-CPMAddPackage("gh:nlohmann/json#v3.11.2")
+# CPMAddPackage("gh:fmtlib/fmt#9.1.0")
+# CPMAddPackage("gh:nlohmann/json#v3.11.2")
+
+find_package(LIEF REQUIRED)
+find_package(fmt REQUIRED)
+find_package(nlohmann_json REQUIRED)
+
+add_compile_options(-fpermissive)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(nvdumper main.cpp)
+add_executable(cvdumper main.cpp)
 target_link_libraries(
-  nvdumper PRIVATE
+  cvdumper PRIVATE
   sdk::tier0
   sdk::tier1
   sdk::tier2
   sdk::tier3
   fmt::fmt
+  LIEF::LIEF
   nlohmann_json::nlohmann_json
 )
