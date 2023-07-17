@@ -1,6 +1,7 @@
 #include <LIEF/ELF.hpp>
 #include <convar.h>
 #include <cstdint>
+#include <cstring>
 #include <dlfcn.h>
 #include <fmt/core.h>
 #include <fmt/posix.h>
@@ -17,6 +18,12 @@
 #include <utility>
 
 #include <link.h>
+
+// How inconsistent can I get?
+template <typename S, typename... Args>
+void LogError(const S &format, Args &&...args) {
+  std::cerr << fmt::format(format, args...) << std::cend;
+}
 
 CreateInterfaceFn createinterface_vs = nullptr;
 
@@ -81,18 +88,20 @@ public:
   }
 };
 
-const char *file_to_do_magic_on = nullptr;
+const char *file_to_do_magic_on = "";
 
 int main(int argc, char **argv) {
-  if (argc > 1)
-    file_to_do_magic_on = argv[1];
-  else
+  if (argc > 1) {
+    char *buf = (char *)malloc(MAX_PATH);
+    strncpy(buf, argv[1], MAX_PATH - 1);
+    file_to_do_magic_on = basename(buf);
+  } else
     return;
 
   auto handle_vs = dlopen("libvstdlib_srv.so", RTLD_NOW);
   auto ci = dlsym(handle_vs, "CreateInterface");
   if (handle_vs == nullptr) {
-    fmt::print("???\n");
+    LogError("???\n");
     return 1;
   }
   createinterface_vs = ci;
@@ -102,7 +111,7 @@ int main(int argc, char **argv) {
   //   handle = dlopen("server.so", RTLD_NOW);
 
   if (handle == nullptr) {
-    fmt::print("Handle is nullptr {}\n", dlerror());
+    LogError("Handle is nullptr {}\n", dlerror());
     return 1;
   }
 
@@ -142,21 +151,21 @@ int main(int argc, char **argv) {
       LIEF::ELF::Parser::parse(module_info.first);
 
   if (lief_mod == nullptr) {
-    fmt::print("Lief failed\n");
+    LogError("lIEF failed\n");
     return 3;
   }
 
   const auto cvr_sym =
       lief_mod->get_symbol("_Z15ConVar_RegisteriP23IConCommandBaseAccessor");
   if (cvr_sym == nullptr) {
-    fmt::print("ConVar_Register sym is nullptr\n");
+    LogError("ConVar_Register sym is nullptr\n");
     return 2;
   }
 
   const auto connectt1_sym =
       lief_mod->get_symbol("_Z21ConnectTier1LibrariesPPFPvPKcPiEi");
   if (connectt1_sym == nullptr) {
-    fmt::print("ConnectTier1Libraries sym is nullptr\n");
+    LogError("ConnectTier1Libraries sym is nullptr\n");
     return 2;
   }
 
@@ -169,7 +178,7 @@ int main(int argc, char **argv) {
       (ConnectTier1Libraries_t)(module_info.second + connectt1_sym->value());
   if (module_info.second == 0 || connectt1_sym->value() == 0 ||
       connectt1 == 0) {
-    fmt::print("ConnectTier1Libraries is nullptr\n");
+    LogError("ConnectTier1Libraries is nullptr\n");
     return 2;
   }
 
@@ -177,7 +186,7 @@ int main(int argc, char **argv) {
       (ConVar_Register_t)(module_info.second + cvr_sym->value());
   if (module_info.second == 0 || cvr_sym->value() == 0 ||
       convar_register == 0) {
-    fmt::print("ConVar_Register is nullptr\n");
+    LogError("ConVar_Register is nullptr\n");
     return 2;
   }
 
