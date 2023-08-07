@@ -24,7 +24,7 @@ include(${CPM_DOWNLOAD_LOCATION})
 CPMAddPackage(
   NAME source-sdk
   GITHUB_REPOSITORY ReplayCoding/hl2sdk-cmake
-  GIT_TAG c023ae53e42cb56a338751b56f4075771346e55a
+  GIT_TAG 4ef9cdbda59f1ea07a23c518fa00bea0aac45642
   OPTIONS "SDK_USE_CXX11_ABI ON"
 )
 

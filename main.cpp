@@ -20,9 +20,8 @@
 #include <link.h>
 
 // How inconsistent can I get?
-template <typename S, typename... Args>
-void LogError(const S &format, Args &&...args) {
-  std::cerr << fmt::format(format, args...) << std::cend;
+void LogError(const std::string &s) {
+  std::cerr << (s + "\n");
 }
 
 CreateInterfaceFn createinterface_vs = nullptr;
@@ -111,7 +110,7 @@ int main(int argc, char **argv) {
   //   handle = dlopen("server.so", RTLD_NOW);
 
   if (handle == nullptr) {
-    LogError("Handle is nullptr {}\n", dlerror());
+    LogError(fmt::format("Handle is nullptr {}\n", dlerror()));
     return 1;
   }
 
