@@ -1,28 +1,28 @@
-#include <LIEF/ELF.hpp>
-#include <convar.h>
 #include <cstdint>
 #include <cstring>
-#include <dlfcn.h>
-#include <fmt/core.h>
-#include <fmt/os.h>
-#include <interface.h>
 #include <iostream>
 #include <map>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <ostream>
 #include <stdio.h>
 #include <string>
 #include <string_view>
-#include <tier1/tier1.h>
 #include <utility>
+
+#include <dlfcn.h>
+#include <sys/mman.h>
+
+#include <LIEF/ELF.hpp>
+#include <fmt/core.h>
+#include <fmt/os.h>
+#include <nlohmann/json.hpp>
 
 #include <link.h>
 
+#include <tier1/tier1.h>
+
 // How inconsistent can I get?
-void LogError(const std::string &s) {
-  std::cerr << (s + "\n");
-}
+void LogError(const std::string &s) { std::cerr << (s + "\n"); }
 
 CreateInterfaceFn createinterface_vs = nullptr;
 
@@ -89,13 +89,37 @@ public:
 
 const char *file_to_do_magic_on = "";
 
+uint32_t query_page_size(void) { return sysconf(_SC_PAGE_SIZE); }
+
+void mprotect_page_noalign(void *addr, size_t size, int prot) {
+  uint32_t page_size = query_page_size();
+  void *aligned_address = (void *)((uint64_t)(addr) & ~(page_size - 1));
+
+  size_t end = (uint64_t)addr + size;
+  size_t new_size = end - (uint64_t)aligned_address;
+
+  mprotect(aligned_address, new_size, prot);
+}
+
 int main(int argc, char **argv) {
   if (argc > 1) {
     char *buf = (char *)malloc(MAX_PATH);
     strncpy(buf, argv[1], MAX_PATH - 1);
     file_to_do_magic_on = basename(buf);
   } else
-    return;
+    return 1;
+
+  // Hook tier0 to disable CreateSimpleThread, matsys will crash otherwise.
+  void *handle_t0 = dlopen("libtier0_srv.so", RTLD_NOW | RTLD_LOCAL);
+  // HACK HACK HACK ALERT XXX TODO FIXME THIS WILL CAUSE PROBLEMS
+  void *create_simple_thread_func = dlsym(RTLD_NEXT, "CreateSimpleThread");
+
+  static const uint8_t shellcode[8] = {0x55, 0x48, 0x8b, 0xec,
+                                       0x33, 0xc0, 0xc9, 0xc3};
+
+  mprotect_page_noalign(create_simple_thread_func, sizeof(shellcode),
+                        PROT_READ | PROT_WRITE | PROT_EXEC);
+  memcpy(create_simple_thread_func, shellcode, sizeof(shellcode));
 
   auto handle_vs = dlopen("libvstdlib_srv.so", RTLD_NOW);
   auto ci = dlsym(handle_vs, "CreateInterface");
