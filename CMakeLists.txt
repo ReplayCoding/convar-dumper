@@ -32,3 +32,5 @@ target_link_libraries(
   LIEF::LIEF
   nlohmann_json::nlohmann_json
 )
+
+install(TARGETS cvdumper DESTINATION bin)
