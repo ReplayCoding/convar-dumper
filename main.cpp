@@ -4,7 +4,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <fmt/core.h>
-#include <fmt/posix.h>
+#include <fmt/os.h>
 #include <interface.h>
 #include <iostream>
 #include <map>
