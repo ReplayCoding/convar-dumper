@@ -28,11 +28,16 @@ struct ModuleInfo {
 };
 
 struct Pattern {
-  Pattern(std::vector<uint8_t> pat, std::vector<uint8_t> mask)
-      : pat(pat), mask(mask) {}
+  Pattern(std::vector<uint8_t> pat, std::vector<uint8_t> mask) : m_mask(mask) {
+    for (size_t i = 0; i < pat.size(); i++) {
+      pat[i] = pat[i] & mask[i];
+    }
 
-  std::vector<uint8_t> pat;
-  std::vector<uint8_t> mask;
+    m_pat = pat;
+  }
+
+  std::vector<uint8_t> m_pat;
+  std::vector<uint8_t> m_mask;
 };
 
 Pattern convar_register_pat{
@@ -160,12 +165,12 @@ void mprotect_page_noalign(void *addr, size_t size, int prot) {
 }
 
 void *get_pattern(ModuleInfo mod, Pattern pat) {
-  for (uintptr_t i = mod.addr; i < (mod.addr + mod.length - pat.pat.size());
+  for (uintptr_t i = mod.addr; i < (mod.addr + mod.length - pat.m_pat.size());
        i++) {
     bool found = true;
-    for (uintptr_t j = 0; j < pat.pat.size(); j++) {
+    for (uintptr_t j = 0; j < pat.m_pat.size(); j++) {
       uint8_t value = *(char *)(i + j);
-      found &= ((pat.pat[j] & pat.mask[j]) == (value & pat.mask[j]));
+      found &= (pat.m_pat[j] == (value & pat.m_mask[j]));
     }
 
     if (found)
@@ -201,8 +206,8 @@ int main(int argc, char **argv) {
     return 1;
 
   // Hook tier0 to disable CreateSimpleThread, matsys will crash otherwise.
-  void *handle_t0 = dlopen("libtier0_srv.so", RTLD_NOW | RTLD_LOCAL);
-  // HACK HACK HACK ALERT XXX TODO FIXME THIS WILL CAUSE PROBLEMS
+  void *handle_t0 = dlopen("libtier0.so", RTLD_NOW | RTLD_LOCAL);
+  // HACK HACK HACK ALERT XXX TODO FIXME THIS WILL CAUSE PROBLEMS MAYBE?
   void *create_simple_thread_func = dlsym(RTLD_NEXT, "CreateSimpleThread");
 
   static const uint8_t shellcode[8] = {0x55, 0x48, 0x8b, 0xec,
@@ -212,7 +217,7 @@ int main(int argc, char **argv) {
                         PROT_READ | PROT_WRITE | PROT_EXEC);
   memcpy(create_simple_thread_func, shellcode, sizeof(shellcode));
 
-  auto handle_vs = dlopen("libvstdlib_srv.so", RTLD_NOW);
+  auto handle_vs = dlopen("libvstdlib.so", RTLD_NOW);
   auto ci = dlsym(handle_vs, "CreateInterface");
   if (handle_vs == nullptr) {
     LogError("no vstdlib handle!");
