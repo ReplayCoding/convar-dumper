@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <stdio.h>
 #include <string>
@@ -97,15 +98,28 @@ void *createinterface_wrapper(char *pName, int *pReturnCode) {
   return iface;
 }
 
-struct ConVarFlags_t {
+struct ConVarInfo {
+  ConVarInfo(std::string name, std::string desc,
+             std::vector<std::string_view> flags,
+             std::optional<std::string> default_value, bool is_command)
+      : m_name(name), m_desc(desc), m_flags(flags), m_default(default_value),
+        m_is_command(is_command) {}
+
+  std::string m_name;
+  std::string m_desc;
+  std::vector<std::string_view> m_flags;
+  std::optional<std::string> m_default;
+  bool m_is_command;
+};
+
+struct ConVarFlags {
   int bit;
   const char *desc;
-  const char *shortdesc;
 };
 
 #define CONVARFLAG(x, y)                                                       \
-  { FCVAR_##x, #x, #y }
-static ConVarFlags_t g_ConVarFlags[] = {
+  { FCVAR_##x, #y }
+static ConVarFlags g_ConVarFlags[] = {
     // CONVARFLAG(UNREGISTERED, ""),
     CONVARFLAG(DEVELOPMENTONLY, "developmentonly"),
     CONVARFLAG(GAMEDLL, "gamedll"),
@@ -134,27 +148,33 @@ static ConVarFlags_t g_ConVarFlags[] = {
     CONVARFLAG(CLIENTCMD_CAN_EXECUTE, "clientcmd_can_execute"),
 };
 
+std::vector<ConVarInfo> convar_infos;
+
 class CustomConCommandAccessor : public IConCommandBaseAccessor {
 public:
   virtual bool RegisterConCommandBase(ConCommandBase *pVar) override {
-    std::string flags;
-    for (ConVarFlags_t &flag_to_check : g_ConVarFlags) {
+    std::vector<std::string_view> flags;
+    for (ConVarFlags &flag_to_check : g_ConVarFlags) {
       if (pVar->IsFlagSet(flag_to_check.bit))
-        // no comma at start, total waste :)
-        if (flags.empty())
-          flags += fmt::format("{}", flag_to_check.shortdesc);
-        else
-          flags += fmt::format(",{}", flag_to_check.shortdesc);
+        flags.emplace_back(flag_to_check.desc);
     }
 
-    auto name = pVar->GetName();
-    auto help_text = pVar->GetHelpText();
+    std::string name = pVar->GetName();
+    std::string desc = pVar->GetHelpText();
+    std::optional<std::string> default_value = std::nullopt;
 
+    bool is_command;
     if (ConVar *cVar = dynamic_cast<ConVar *>(pVar)) {
-      fmt::print("cvar '{}' flags: [{}] default: '{}' {}\n", name, flags,
-                 cVar->GetDefault(), help_text);
-    } else
-      fmt::print("ccommand '{}' flags: [{}] {}\n", name, flags, help_text);
+      is_command = false;
+      if (cVar->GetDefault())
+        default_value = cVar->GetDefault();
+    } else {
+      is_command = true;
+    }
+    ConVarInfo cvar_info =
+        ConVarInfo(name, desc, flags, default_value, is_command);
+
+    convar_infos.push_back(cvar_info);
     return true;
   }
 };
@@ -308,6 +328,33 @@ int main(int argc, char **argv) {
 
   CustomConCommandAccessor accessor{};
   convar_register(0, &accessor);
+
+  struct ConvarSort {
+    bool operator()(const ConVarInfo &a, const ConVarInfo &b) {
+      return a.m_name < b.m_name;
+    }
+  };
+  std::sort(convar_infos.begin(), convar_infos.end(), ConvarSort());
+
+  for (ConVarInfo &info : convar_infos) {
+    std::string flag_string = "";
+    for (std::string_view flag : info.m_flags) {
+      flag_string += fmt::format(" {}", flag);
+    }
+
+    if (info.m_is_command) {
+      fmt::print("ccommand {}\n", info.m_name);
+    } else {
+      fmt::print("convar {}\n", info.m_name);
+    }
+    fmt::print("flags: {}\n", flag_string);
+    if (info.m_default)
+      fmt::print("default: {}\n", info.m_default.value());
+
+    fmt::print("{}\n", info.m_desc);
+
+    fmt::print("\n");
+  }
 
   dlclose(handle);
 
