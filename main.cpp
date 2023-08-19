@@ -8,11 +8,11 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <dlfcn.h>
 #include <sys/mman.h>
 
-#include <LIEF/ELF.hpp>
 #include <fmt/core.h>
 #include <fmt/os.h>
 #include <nlohmann/json.hpp>
@@ -20,6 +20,63 @@
 #include <link.h>
 
 #include <tier1/tier1.h>
+
+struct ModuleInfo {
+  std::string name;
+  uintptr_t addr;
+  uintptr_t length;
+};
+
+struct Pattern {
+  Pattern(std::vector<uint8_t> pat, std::vector<uint8_t> mask)
+      : pat(pat), mask(mask) {}
+
+  std::vector<uint8_t> pat;
+  std::vector<uint8_t> mask;
+};
+
+Pattern convar_register_pat{
+    std::vector<uint8_t>{
+        0xa1, 0xb0, 0x9a, 0x11, 0x00, 0x85, 0xc0, 0x74, 0x09, 0x80, 0x3d, 0xa0,
+        0x75, 0x11, 0x00, 0x00, 0x74, 0x06, 0xc3, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x55, 0x89, 0xe5, 0x56, 0x53, 0x83, 0xec, 0x10, 0xc6, 0x05, 0xa0, 0x75,
+        0x11, 0x00, 0x01, 0x8b, 0x55, 0x08, 0x89, 0x15, 0xb0, 0x75, 0x11, 0x00,
+        0x8b, 0x10, 0x89, 0x04, 0x24, 0xff, 0x52, 0x14, 0x8b, 0x4d, 0x0c, 0x8b,
+        0x1d, 0x10, 0x74, 0x11, 0x00, 0xa3, 0x80, 0x30, 0x06, 0x00, 0xb8, 0x74,
+        0x30, 0x06, 0x00, 0x85, 0xc9, 0x0f, 0x45, 0x45, 0x0c, 0x85, 0xdb, 0xa3,
+        0x00, 0x74, 0x11, 0x00, 0x75, 0x08, 0xeb, 0x27, 0xff, 0xff, 0xff, 0xff},
+    std::vector<uint8_t>{
+        0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff,
+        0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xf8, 0x00, 0xff, 0xff,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0xf8, 0xff, 0xff, 0x38, 0xff, 0xf8,
+        0x00, 0xff, 0xf8, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+        0xff, 0xff, 0xf8, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+        0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00}};
+
+Pattern connect_t1_pat{
+    {
+        0x55, 0x89, 0xe5, 0x56, 0x53, 0x83, 0xec, 0x10, 0x80, 0x3d, 0xd0, 0x9a,
+        0x11, 0x00, 0x00, 0x8b, 0x75, 0x0c, 0x75, 0x2e, 0x85, 0xf6, 0xc6, 0x05,
+        0xd0, 0x9a, 0x11, 0x00, 0x01, 0x7e, 0x23, 0x31, 0xdb, 0x8d, 0xb4, 0x26,
+        0x00, 0x00, 0x00, 0x00, 0x8b, 0x15, 0xb0, 0x9a, 0x11, 0x00, 0x85, 0xd2,
+        0x74, 0x1e, 0xa1, 0xa0, 0x9a, 0x11, 0x00, 0x85, 0xc0, 0x74, 0x45, 0x83,
+        0xc3, 0x01, 0x39, 0xf3, 0x75, 0xe6, 0x83, 0xc4, 0x10, 0x5b, 0x5e, 0x5d,
+        0xc3, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x8b, 0x45, 0x08, 0xc7,
+        0x44, 0x24, 0x04, 0x00, 0x00, 0x00, 0x00, 0xc7, 0x04, 0x24, 0x76, 0xfb,
+    },
+    {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0xff, 0xf8, 0x00, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0x3f,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+        0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0xff,
+        0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff,
+        0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xf8, 0x00, 0xff,
+        0xff, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x38, 0x00, 0x00,
+    }};
 
 // How inconsistent can I get?
 void LogError(const std::string &s) { std::cerr << (s + "\n"); }
@@ -60,6 +117,7 @@ static ConVarFlags_t g_ConVarFlags[] = {
     CONVARFLAG(SERVER_CAN_EXECUTE, "server_can_execute"),
     CONVARFLAG(CLIENTCMD_CAN_EXECUTE, "clientcmd_can_execute"),
     CONVARFLAG(CLIENTDLL, "cl"),
+    CONVARFLAG(DEVELOPMENTONLY, "dev"),
 };
 
 class CustomConCommandAccessor : public IConCommandBaseAccessor {
@@ -101,6 +159,39 @@ void mprotect_page_noalign(void *addr, size_t size, int prot) {
   mprotect(aligned_address, new_size, prot);
 }
 
+void *get_pattern(ModuleInfo mod, Pattern pat) {
+  for (uintptr_t i = mod.addr; i < (mod.addr + mod.length - pat.pat.size());
+       i++) {
+    bool found = true;
+    for (uintptr_t j = 0; j < pat.pat.size(); j++) {
+      uint8_t value = *(char *)(i + j);
+      found &= ((pat.pat[j] & pat.mask[j]) == (value & pat.mask[j]));
+    }
+
+    if (found)
+      return (void *)i;
+  }
+
+  return nullptr;
+}
+
+// void *get_symbol(const std::unique_ptr<LIEF::ELF::Binary> &binary,
+//                  uintptr_t baddr, std::string str) {
+//   const auto sym = binary->get_symbol(str);
+//   if (sym == nullptr) {
+//     LogError("sym is nullptr\n");
+//     return nullptr;
+//   }
+//
+//   auto func = (baddr + sym->value());
+//   if (baddr == 0 || sym->value() == 0 || func == 0) {
+//     LogError("func is nullptr\n");
+//     return nullptr;
+//   }
+//
+//   return (void *)func;
+// }
+
 int main(int argc, char **argv) {
   if (argc > 1) {
     char *buf = (char *)malloc(MAX_PATH);
@@ -124,7 +215,7 @@ int main(int argc, char **argv) {
   auto handle_vs = dlopen("libvstdlib_srv.so", RTLD_NOW);
   auto ci = dlsym(handle_vs, "CreateInterface");
   if (handle_vs == nullptr) {
-    LogError("???\n");
+    LogError("no vstdlib handle!");
     return 1;
   }
   createinterface_vs = ci;
@@ -138,11 +229,10 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  std::pair<std::string, uintptr_t> module_info;
+  ModuleInfo module_info;
   dl_iterate_phdr(
       [](dl_phdr_info *info, size_t info_size, void *user_data) {
-        auto *module_info =
-            std::bit_cast<std::pair<std::string, uintptr_t> *>(user_data);
+        auto *module_info = std::bit_cast<ModuleInfo *>(user_data);
         const std::string_view fname = basename(info->dlpi_name);
 
         constexpr std::string_view vsdo_path = "linux-vdso.so.1";
@@ -154,7 +244,7 @@ int main(int argc, char **argv) {
           return 0;
         }
 
-        auto end_addr = info->dlpi_addr;
+        uintptr_t end_addr = info->dlpi_addr;
         for (size_t i = 0; i < info->dlpi_phnum; i++) {
           end_addr = info->dlpi_addr +
                      (info->dlpi_phdr->p_vaddr + info->dlpi_phdr->p_memsz);
@@ -162,7 +252,8 @@ int main(int argc, char **argv) {
 
         if (fname == file_to_do_magic_on) {
           *module_info = {std::string(info->dlpi_name),
-                          static_cast<uintptr_t>(info->dlpi_addr)};
+                          static_cast<uintptr_t>(info->dlpi_addr),
+                          end_addr - static_cast<uintptr_t>(info->dlpi_addr)};
           return 1;
         }
 
@@ -170,27 +261,13 @@ int main(int argc, char **argv) {
       },
       &module_info);
 
-  const std::unique_ptr<LIEF::ELF::Binary> lief_mod =
-      LIEF::ELF::Parser::parse(module_info.first);
-
-  if (lief_mod == nullptr) {
-    LogError("lIEF failed\n");
-    return 3;
-  }
-
-  const auto cvr_sym =
-      lief_mod->get_symbol("_Z15ConVar_RegisteriP23IConCommandBaseAccessor");
-  if (cvr_sym == nullptr) {
-    LogError("ConVar_Register sym is nullptr\n");
-    return 2;
-  }
-
-  const auto connectt1_sym =
-      lief_mod->get_symbol("_Z21ConnectTier1LibrariesPPFPvPKcPiEi");
-  if (connectt1_sym == nullptr) {
-    LogError("ConnectTier1Libraries sym is nullptr\n");
-    return 2;
-  }
+  // const std::unique_ptr<LIEF::ELF::Binary> lief_mod =
+  //     LIEF::ELF::Parser::parse(module_info.name);
+  //
+  // if (lief_mod == nullptr) {
+  //   LogError("lIEF failed\n");
+  //   return 3;
+  // }
 
   typedef void (*ConnectTier1Libraries_t)(CreateInterfaceFn * pFactoryList,
                                           int nFactoryCount);
@@ -198,17 +275,15 @@ int main(int argc, char **argv) {
                                     IConCommandBaseAccessor *pAccessor);
 
   auto connectt1 =
-      (ConnectTier1Libraries_t)(module_info.second + connectt1_sym->value());
-  if (module_info.second == 0 || connectt1_sym->value() == 0 ||
-      connectt1 == 0) {
+      (ConnectTier1Libraries_t)get_pattern(module_info, connect_t1_pat);
+  if (connectt1 == nullptr) {
     LogError("ConnectTier1Libraries is nullptr\n");
     return 2;
   }
 
   auto convar_register =
-      (ConVar_Register_t)(module_info.second + cvr_sym->value());
-  if (module_info.second == 0 || cvr_sym->value() == 0 ||
-      convar_register == 0) {
+      (ConVar_Register_t)get_pattern(module_info, convar_register_pat);
+  if (convar_register == nullptr) {
     LogError("ConVar_Register is nullptr\n");
     return 2;
   }

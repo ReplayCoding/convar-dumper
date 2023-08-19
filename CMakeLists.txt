@@ -11,7 +11,6 @@ option(SDK_USE_CXX11_ABI "" ON)
 
 add_subdirectory(hl2sdk-cmake)
 
-find_package(LIEF REQUIRED)
 find_package(fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
@@ -29,7 +28,6 @@ target_link_libraries(
   sdk::tier2
   sdk::tier3
   fmt::fmt
-  LIEF::LIEF
   nlohmann_json::nlohmann_json
 )
 
