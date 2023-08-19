@@ -20,7 +20,7 @@
 
 #include <link.h>
 
-#include <tier1/tier1.h>
+#include <convar.h>
 
 struct ModuleInfo {
   std::string name;
@@ -106,24 +106,32 @@ struct ConVarFlags_t {
 #define CONVARFLAG(x, y)                                                       \
   { FCVAR_##x, #x, #y }
 static ConVarFlags_t g_ConVarFlags[] = {
-    //	CONVARFLAG( UNREGISTERED, "u" ),
-    CONVARFLAG(ARCHIVE, "a"),
-    CONVARFLAG(SPONLY, "sp"),
-    CONVARFLAG(GAMEDLL, "sv"),
+    // CONVARFLAG(UNREGISTERED, ""),
+    CONVARFLAG(DEVELOPMENTONLY, "developmentonly"),
+    CONVARFLAG(GAMEDLL, "gamedll"),
+    CONVARFLAG(CLIENTDLL, "clientdll"),
+    CONVARFLAG(HIDDEN, "hidden"),
+    CONVARFLAG(PROTECTED, "protected"),
+    CONVARFLAG(SPONLY, "sponly"),
+    CONVARFLAG(ARCHIVE, "archive"),
+    CONVARFLAG(NOTIFY, "notify"),
+    CONVARFLAG(USERINFO, "userinfo"),
     CONVARFLAG(CHEAT, "cheat"),
-    CONVARFLAG(USERINFO, "user"),
-    CONVARFLAG(NOTIFY, "nf"),
-    CONVARFLAG(PROTECTED, "prot"),
-    CONVARFLAG(PRINTABLEONLY, "print"),
-    CONVARFLAG(UNLOGGED, "log"),
-    CONVARFLAG(NEVER_AS_STRING, "numeric"),
-    CONVARFLAG(REPLICATED, "rep"),
+    CONVARFLAG(PRINTABLEONLY, "printableonly"),
+    CONVARFLAG(UNLOGGED, "unlogged"),
+    CONVARFLAG(NEVER_AS_STRING, "never_as_string"),
+    CONVARFLAG(REPLICATED, "replicated"),
     CONVARFLAG(DEMO, "demo"),
-    CONVARFLAG(DONTRECORD, "norecord"),
+    CONVARFLAG(DONTRECORD, "dontrecord"),
+    CONVARFLAG(RELOAD_MATERIALS, "reload_materials"),
+    CONVARFLAG(RELOAD_TEXTURES, "reload_textures"),
+    CONVARFLAG(NOT_CONNECTED, "not_connected"),
+    CONVARFLAG(MATERIAL_SYSTEM_THREAD, "material_system_thread"),
+    CONVARFLAG(ARCHIVE_XBOX, "archive_xbox"),
+    CONVARFLAG(ACCESSIBLE_FROM_THREADS, "accessible_from_threads"),
     CONVARFLAG(SERVER_CAN_EXECUTE, "server_can_execute"),
+    CONVARFLAG(SERVER_CANNOT_QUERY, "server_cannot_query"),
     CONVARFLAG(CLIENTCMD_CAN_EXECUTE, "clientcmd_can_execute"),
-    CONVARFLAG(CLIENTDLL, "cl"),
-    CONVARFLAG(DEVELOPMENTONLY, "dev"),
 };
 
 class CustomConCommandAccessor : public IConCommandBaseAccessor {
