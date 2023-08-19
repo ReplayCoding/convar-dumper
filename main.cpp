@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -165,10 +166,10 @@ void mprotect_page_noalign(void *addr, size_t size, int prot) {
 }
 
 void *get_pattern(ModuleInfo mod, Pattern pat) {
-  for (uintptr_t i = mod.addr; i < (mod.addr + mod.length - pat.m_pat.size());
-       i++) {
+  uintptr_t pat_size = pat.m_pat.size();
+  for (uintptr_t i = mod.addr; i < (mod.addr + mod.length - pat_size); i++) {
     bool found = true;
-    for (uintptr_t j = 0; j < pat.m_pat.size(); j++) {
+    for (uintptr_t j = 0; j < pat_size; j++) {
       uint8_t value = *(char *)(i + j);
       found &= (pat.m_pat[j] == (value & pat.m_mask[j]));
     }
@@ -251,8 +252,9 @@ int main(int argc, char **argv) {
 
         uintptr_t end_addr = info->dlpi_addr;
         for (size_t i = 0; i < info->dlpi_phnum; i++) {
-          end_addr = info->dlpi_addr +
-                     (info->dlpi_phdr->p_vaddr + info->dlpi_phdr->p_memsz);
+          ElfW(Phdr) phdr = info->dlpi_phdr[i];
+          end_addr = std::max(
+              end_addr, (info->dlpi_addr + (phdr.p_vaddr + phdr.p_memsz)));
         }
 
         if (fname == file_to_do_magic_on) {
