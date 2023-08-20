@@ -199,7 +199,11 @@ void *get_pattern(ModuleInfo mod, Pattern pat) {
     bool found = true;
     for (uintptr_t j = 0; j < pat_size; j++) {
       uint8_t value = *(char *)(i + j);
+      // fmt::print("Got value for {:08X} {}\n", i, j);
       found &= (pat.m_pat[j] == (value & pat.m_mask[j]));
+
+      if (!found)
+        break;
     }
 
     if (found)
