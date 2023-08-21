@@ -287,6 +287,8 @@ int main(int argc, char **argv) {
           ElfW(Phdr) phdr = info->dlpi_phdr[i];
           end_addr = std::max(
               end_addr, (info->dlpi_addr + (phdr.p_vaddr + phdr.p_memsz)));
+
+          break; // temp fix for libsteam_api crashing until i figure out what i'm doing wrong here (literally never happening)
         }
 
         if (fname == file_to_do_magic_on) {
